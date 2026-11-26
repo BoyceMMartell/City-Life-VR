@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>CITY LIFE VR</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#111;color:white;font-family:Arial}
+canvas{display:block}
+#hud{position:absolute;inset:0;pointer-events:none}
+#top{display:flex;justify-content:space-between;padding:15px}
+.panel{background:#101820dd;padding:12px;border:1px solid #e52b36;border-radius:10px}
+#menu{position:absolute;inset:0;background:#080b10ed;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+#menuContent{text-align:center;width:85%;max-width:400px}
+h1{color:#ff3848;font-size:38px}
+button{background:#c51f32;color:white;border:0;border-radius:9px;padding:14px;margin:6px;font-weight:bold;font-size:15px}
+#controls{position:absolute;bottom:25px;width:100%;display:flex;justify-content:space-between;padding:15px;pointer-events:auto}
+#stick{width:115px;height:115px;border-radius:50%;background:#ffffff35;border:2px solid white;touch-action:none}
+#actions{display:flex;flex-direction:column;gap:8px}
+#message{position:absolute;top:75px;left:50%;transform:translateX(-50%);background:#111d;padding:10px;border-radius:8px}
+#settings{display:none}
+</style>
+</head>
+<body>
+<div id="hud">
+ <div id="top">
+  <div class="panel">CITY LIFE VR<br><span id="money">$500</span></div>
+  <div class="panel">HEALTH: 100<br><span id="mode">ON FOOT</span></div>
+ </div>
+ <div id="message">Welcome to the city</div>
+ <div id="controls">
+  <div id="stick"></div>
+  <div id="actions">
+   <button id="enter">ENTER CAR</button>
+   <button id="mission">MISSION</button>
+   <button id="vr">ENTER VR</button>
+   <button id="openMenu">MENU</button>
+  </div>
+ </div>
+</div>
+<div id="menu">
+ <div id="menuContent">
+  <h1>CITY LIFE VR</h1>
+  <p>YOUR CITY. YOUR STORY.</p>
+  <button id="start">START GAME</button>
+  <button id="settingsBtn">SETTINGS</button>
+  <div id="settings">
+   <p>Graphics</p>
+   <select id="quality">
+    <option value="high">High</option>
+    <option value="low">Low</option>
+   </select>
+   <p>Comfort turning</p>
+   <select id="turn">
+    <option value="smooth">Smooth</option>
+    <option value="snap">Snap</option>
+   </select>
+   <button id="back">BACK</button>
+  </div>
+ </div>
+</div>
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87b9dc);
+scene.fog=new THREE.Fog(0x87b9dc,40,180);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,300);
+camera.position.set(0,2,8);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.xr.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x555566,2));
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(30,60,20);
+scene.add(sun);
+
+function block(x,y,z,w,h,d,color){
+ const mesh=new THREE.Mesh(
+  new THREE.BoxGeometry(w,h,d),
+  new THREE.MeshStandardMaterial({color})
+ );
+ mesh.position.set(x,y+h/2,z);
+ scene.add(mesh);
+ return mesh;
+}
+
+const ground=block(0,-.2,0,220,.3,220,0x555b57);
+block(0,0,0,12,.1,220,0x303238);
+block(0,0,0,220,.1,12,0x303238);
+
+for(let i=-90;i<=90;i+=18){
+ for(let j=-90;j<=90;j+=18){
+  if(Math.abs(i)<15||Math.abs(j)<15)continue;
+  const h=10+Math.random()*35;
+  const b=block(i,h/2,j,9,h,9,
+   [0x66727e,0x777b83,0x555d69,0x99918a][Math.floor(Math.random()*4)]);
+  b.position.y=h/2;
+  for(let y=3;y<h-2;y+=4){
+   for(let x=-3;x<=3;x+=3){
+    const window=block(i+x,y,j+4.55,1.2,1.5,.08,0x8dc8e8);
+   }
+  }
+ }
+}
+
+// Player
+const player=new THREE.Group();
+scene.add(player);
+player.position.set(0,0,8);
+player.add(camera);
+camera.position.set(0,1.7,0);
+
+// Car
+const car=new THREE.Group();
+scene.add(car);
+car.position.set(5,0,5);
+const body=block(0,0,0,2.5,.8,4,0xb51e2d);
+body.parent.remove(body);
+car.add(body);
+body.position.y=.8;
+const roof=block(0,0,0,1.8,.8,2,0x292f39);
+roof.position.y=1.6;
+car.add(roof);
+
+const wheels=[];
+for(const x of [-1.2,1.2]){
+ for(const z of [-1.3,1.3]){
+  const wheel=new THREE.Mesh(
+   new THREE.CylinderGeometry(.4,.4,.25,16),
+   new THREE.MeshStandardMaterial({color:0x111111})
+  );
+  wheel.rotation.z=Math.PI/2;
+  wheel.position.set(x,.4,z);
+  car.add(wheel);
+  wheels.push(wheel);
+ }
+}
+
+let driving=false;
+let speed=0;
+let money=500;
+let missionNumber=0;
+let running=false;
+
+const msg=document.getElementById('message');
+function notify(t){msg.textContent=t;}
+
+document.getElementById('start').onclick=()=>{
+ document.getElementById('menu').style.display='none';
+ running=true;
+ notify('Explore the city!');
+};
+
+document.getElementById('openMenu').onclick=()=>{
+ document.getElementById('menu').style.display='flex';
+ running=false;
+};
+
+document.getElementById('settingsBtn').onclick=()=>{
+ document.getElementById('settings').style.display='block';
+};
+
+document.getElementById('back').onclick=()=>{
+ document.getElementById('settings').style.display='none';
+};
+
+document.getElementById('quality').onchange=e=>{
+ renderer.setPixelRatio(e.target.value==='low'?0.7:Math.min(devicePixelRatio,1.5));
+};
+
+document.getElementById('enter').onclick=()=>{
+ if(!driving){
+  if(player.position.distanceTo(car.position)<7){
+   driving=true;
+   player.visible=false;
+   notify('You entered your car');
+  }else notify('Find your car first');
+ }else{
+  driving=false;
+  player.visible=true;
+  player.position.copy(car.position);
+  notify('You exited your car');
+ }
+ document.getElementById('mode').textContent=driving?'DRIVING':'ON FOOT';
+};
+
+document.getElementById('mission').onclick=()=>{
+ missionNumber++;
+ const tasks=[
+ 'MISSION 1: Drive to the downtown garage',
+ 'MISSION 2: Explore the city center',
+ 'MISSION 3: Visit the waterfront',
+ 'MISSION 4: Return to your apartment'
+ ];
+ notify(tasks[(missionNumber-1)%tasks.length]);
+ money+=100;
+ document.getElementById('money').textContent='$'+money;
+};
+
+document.getElementById('vr').onclick=async()=>{
+ if(!renderer.xr.isPresenting){
+  if(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')){
+   const session=await navigator.xr.requestSession('immersive-vr',{
+    optionalFeatures:['local-floor']
+   });
+   renderer.xr.setSession(session);
+  }else notify('VR not supported in this browser');
+ }
+};
+
+// Touch joystick
+const stick=document.getElementById('stick');
+let moveX=0,moveY=0;
+stick.addEventListener('pointermove',e=>{
+ if(!e.buttons)return;
+ const r=stick.getBoundingClientRect();
+ moveX=Math.max(-1,Math.min(1,(e.clientX-r.left-r.width/2)/(r.width/2)));
+ moveY=Math.max(-1,Math.min(1,(e.clientY-r.top-r.height/2)/(r.height/2)));
+});
+stick.addEventListener('pointerup',()=>{
+ moveX=0;moveY=0;
+});
+stick.addEventListener('pointercancel',()=>{
+ moveX=0;moveY=0;
+});
+
+let last=performance.now();
+
+renderer.setAnimationLoop(()=>{
+ const now=performance.now();
+ const dt=Math.min((now-last)/1000,.05);
+ last=now;
+
+ if(running){
+  if(driving){
+   speed+=(moveY*.0 - moveY*8*dt);
+   speed*=.99;
+   car.rotation.y-=moveX*dt*1.8;
+   car.translateZ(speed*dt);
+   wheels.forEach(w=>w.rotation.x+=speed*dt*2);
+   player.position.copy(car.position);
+  }else{
+   player.rotation.y-=moveX*dt*2;
+   player.translateZ(moveY*dt*8);
+  }
+ }
+ renderer.render(scene,camera);
+});
+
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
